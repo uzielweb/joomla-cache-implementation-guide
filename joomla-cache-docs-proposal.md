@@ -1,22 +1,15 @@
-# [Docs] Improve Cache System Documentation with Practical Examples (Joomla 5/6)
-
-**Labels**: `enhancement`, `documentation`, `cache`, `developer experience`
-
+---
+title: Implementing Cache in Components
+sidebar_position: 1
 ---
 
-## 📋 Description
+# Implementing Cache in Joomla Components
 
-The current cache system documentation could benefit from more practical, real-world examples showing how to implement caching in custom components using the modern API (Joomla 5/6).
+This guide shows how to implement efficient caching in Joomla 5+ custom components using the native Cache API.
 
-While the Cache API is well-designed and powerful, developers often struggle to find complete implementation examples that show the full picture from service creation to model integration and cache invalidation.
+## Overview
 
-## 🎯 Current State
-
-Developers looking to implement caching in custom components face challenges finding:
-- ✅ Complete, production-ready implementation examples
-- ✅ Best practices for cache key generation
-- ✅ Cache invalidation strategies after CRUD operations
-- ✅ Integration patterns with ListModel and AdminModel
+Implementing caching can significantly improve performance:
 - ✅ How to respect global Joomla cache configuration (`$caching`, `$cachetime`)
 
 ## 💡 Proposed Documentation Improvements
@@ -67,28 +60,71 @@ class CacheService
 
     /**
      * Get cached data or execute callback
+     *
+     * @param   string    $cacheId   Unique cache identifier
+     * @param   callable  $callback  Function to execute if cache miss
+     * @param   array     $args      Arguments to pass to callback
+     *
+     * @return  mixed     Cached or fresh data
      */
     public function get(string $cacheId, callable $callback, array $args = []): mixed
     {
-        return $this->cache->get($callback, $args, $cacheId);
+        try {
+            return $this->cache->get($callback, $args, $cacheId);
+        } catch (\Exception $e) {
+            // Log error but don't break the application
+            Factory::getApplication()->getLogger()->error(
+                'Cache retrieval failed: ' . $e->getMessage(),
+                ['exception' => $e]
+            );
+            
+            // Fallback: Execute callback directly
+            return call_user_func_array($callback, $args);
+        }
     }
 
     /**
      * Remove specific cache item
+     *
+     * @param   string       $cacheId  Cache identifier
+     * @param   string|null  $group    Cache group (optional)
+     *
+     * @return  bool         True on success
      */
     public function remove(string $cacheId, ?string $group = null): bool
     {
-        $group = $group ?? $this->defaultGroup;
-        return $this->cache->cache->remove($cacheId, $group);
+        try {
+            $group = $group ?? $this->defaultGroup;
+            return $this->cache->remove($cacheId, $group);
+        } catch (\Exception $e) {
+            Factory::getApplication()->getLogger()->warning(
+                'Cache removal failed: ' . $e->getMessage(),
+                ['cacheId' => $cacheId, 'group' => $group]
+            );
+            return false;
+        }
     }
 
     /**
      * Clean entire cache group
+     *
+     * @param   string|null  $group  Cache group (optional)
+     * @param   string       $mode   Cleaning mode ('group' or 'all')
+     *
+     * @return  bool         True on success
      */
     public function clean(?string $group = null, string $mode = 'group'): bool
     {
-        $group = $group ?? $this->defaultGroup;
-        return $this->cache->cache->clean($group, $mode);
+        try {
+            $group = $group ?? $this->defaultGroup;
+            return $this->cache->clean($group, $mode);
+        } catch (\Exception $e) {
+            Factory::getApplication()->getLogger()->warning(
+                'Cache cleaning failed: ' . $e->getMessage(),
+                ['group' => $group, 'mode' => $mode]
+            );
+            return false;
+        }
     }
 }
 ```
@@ -116,16 +152,16 @@ class CacheHelper
     public static function generateKey(string $type, mixed $identifier = null, array $params = []): string
     {
         $parts = [self::CACHE_PREFIX, $type];
-        
+      
         if ($identifier !== null) {
             $parts[] = $identifier;
         }
-        
+      
         // Hash parameters to ensure unique key
         if (!empty($params)) {
             $parts[] = md5(serialize($params));
         }
-        
+      
         return implode('.', $parts);
     }
 
@@ -137,7 +173,7 @@ class CacheHelper
     {
         // Get global cachetime (default: 15 minutes)
         $baseLifetime = Factory::getApplication()->get('cachetime', 15);
-        
+      
         // Apply multipliers per type
         $multipliers = [
             'list'   => 4,   // 4x base (60min if base=15)
@@ -146,7 +182,7 @@ class CacheHelper
             'count'  => 2,   // 2x base (30min if base=15)
             'search' => 4,   // 4x base
         ];
-        
+      
         $multiplier = $multipliers[$type] ?? 4;
         return $baseLifetime * $multiplier;
     }
@@ -160,7 +196,7 @@ class CacheHelper
         if (JDEBUG) {
             return false;
         }
-        
+      
         // Respect global $caching configuration
         return (bool) Factory::getApplication()->get('caching', 0);
     }
@@ -186,7 +222,7 @@ class ItemsModel extends ListModel
     public function __construct($config = [])
     {
         parent::__construct($config);
-        
+      
         // Initialize cache service if enabled
         if (CacheHelper::isCacheEnabled()) {
             $this->cacheService = new CacheService([
@@ -241,7 +277,7 @@ class ItemModel extends ItemModel
     public function __construct($config = [])
     {
         parent::__construct($config);
-        
+      
         if (CacheHelper::isCacheEnabled()) {
             $this->cacheService = new CacheService([
                 'lifetime' => CacheHelper::getLifetime('item')
@@ -253,10 +289,10 @@ class ItemModel extends ItemModel
     {
         if ($this->_item === null) {
             $id = $id ?? $this->getState('item.id');
-            
+          
             if ($this->cacheService && $id) {
                 $cacheKey = CacheHelper::generateKey('item', $id);
-                
+              
                 $this->_item = $this->cacheService->get(
                     $cacheKey,
                     function() use ($id) {
@@ -310,21 +346,18 @@ class ItemModel extends AdminModel
     public function save($data)
     {
         $result = parent::save($data);
-        
+      
         if ($result) {
             $id = $this->getState($this->getName() . '.id');
-            
+          
             // Clear item cache
             $this->cacheService->remove(
                 CacheHelper::generateKey('item', $id)
             );
-            
-            // Clear all lists (item may appear in filtered lists)
-            $this->cacheService->clean('com_mycomponent.list', 'group');
-            
-            // Clear related caches
-            $this->cacheService->clean('com_mycomponent.filter', 'group');
-            $this->cacheService->clean('com_mycomponent.count', 'group');
+          
+            // Clear all component caches (item may appear in multiple cached lists/filters)
+            // Note: This invalidates all cached data for the component
+            $this->cacheService->clean('com_mycomponent', 'group');
         }
 
         return $result;
@@ -336,18 +369,18 @@ class ItemModel extends AdminModel
     public function delete(&$pks)
     {
         $result = parent::delete($pks);
-        
+      
         if ($result) {
             $ids = is_array($pks) ? $pks : [$pks];
-            
+          
             foreach ($ids as $id) {
                 $this->cacheService->remove(
                     CacheHelper::generateKey('item', $id)
                 );
             }
-            
-            // Clear lists
-            $this->cacheService->clean('com_mycomponent.list', 'group');
+          
+            // Clear all component caches
+            $this->cacheService->clean('com_mycomponent', 'group');
         }
 
         return $result;
@@ -374,11 +407,11 @@ class ItemsController extends AdminController
     public function clearCache()
     {
         $this->checkToken();
-        
+      
         try {
             $cacheService = new CacheService();
             $cacheService->clean('com_mycomponent', 'group');
-            
+          
             $this->setMessage(Text::_('COM_MYCOMPONENT_CACHE_CLEARED'));
         } catch (\Exception $e) {
             $this->setMessage($e->getMessage(), 'error');
@@ -405,9 +438,9 @@ class HtmlView extends HtmlView
     protected function addToolbar()
     {
         // ... other toolbar buttons ...
-        
+      
         $toolbar = Toolbar::getInstance();
-        
+      
         // Add cache clear button
         $toolbar->standardButton('cache')
             ->text('JTOOLBAR_CLEAR_CACHE')
@@ -422,6 +455,7 @@ class HtmlView extends HtmlView
 Document how components should respect Joomla's global cache configuration:
 
 **configuration.php:**
+
 ```php
 public $caching = 0;            // Enable/disable cache globally (0=off, 1=on)
 public $cache_handler = 'file'; // Storage backend: file, memcached, redis, apcu
@@ -431,12 +465,14 @@ public $cachetime = 15;         // Base cache lifetime in minutes
 **Best Practices:**
 
 ✅ **DO:**
+
 - Use `$cachetime` as base for component TTLs (with multipliers)
 - Respect `$caching` setting (`Factory::getApplication()->get('caching')`)
 - Automatically disable cache when `JDEBUG = true`
 - Use `CacheControllerFactory` to respect `$cache_handler`
 
 ❌ **DON'T:**
+
 - Hardcode cache lifetimes
 - Implement custom cache when Joomla's works well
 - Forget to invalidate cache after data changes
@@ -464,6 +500,7 @@ This documentation would help developers:
 ## 📚 Related Documentation
 
 Current documentation that could be expanded:
+
 - Manual: Cache System Overview
 - API Reference: CacheController classes
 - Building Extensions: Performance best practices
@@ -471,6 +508,7 @@ Current documentation that could be expanded:
 ## 💬 Suggested Implementation
 
 These examples would fit well in:
+
 - **Location**: `docs/building-extensions/performance/caching.md`
 - **Tutorial**: "Implementing Cache in Your Component (Joomla 5+)"
 - **Code samples repository**: Official examples repo
@@ -478,6 +516,7 @@ These examples would fit well in:
 ## 🤝 Contribution
 
 I'm happy to contribute:
+
 - ✍️ Write the documentation with these examples
 - 📝 Create a PR with markdown files
 - 🎓 Provide additional tutorials or videos
@@ -487,6 +526,6 @@ I'm happy to contribute:
 
 **Thank you for considering this improvement!** Better cache documentation will help component developers build faster, more scalable Joomla sites. 🚀
 
-**Joomla Version**: 5.x, 6.x  
-**Related PRs/Issues**: N/A  
+**Joomla Version**: 5.x, 6.x
+**Related PRs/Issues**: N/A
 **Documentation Repo**: https://github.com/joomla/Manual
