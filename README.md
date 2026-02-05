@@ -2,7 +2,7 @@
 
 Production-ready guide for implementing caching in Joomla 5/6 custom components using the native Cache API.
 
-## Ì≥ö Contents
+## Contents
 
 This repository contains comprehensive documentation showing:
 
@@ -14,7 +14,7 @@ This repository contains comprehensive documentation showing:
 - ‚úÖ **Best practices** for respecting Joomla configuration
 - ‚úÖ **Real-world performance metrics** (70% query reduction, 50% faster loads)
 
-## ÌæØ Features
+## Features
 
 - Try-catch error handling with graceful degradation
 - Joomla Logger integration for debugging
@@ -22,17 +22,17 @@ This repository contains comprehensive documentation showing:
 - Automatic cache disable in debug mode
 - Production-tested code examples
 
-## Ì≥ñ Documentation
+## Documentation
 
 See [joomla-cache-docs-proposal.md](joomla-cache-docs-proposal.md) for the complete guide.
 
-## Ì¥ó Related Links
+## Related Links
 
 - **Pull Request**: [joomla/Manual #582](https://github.com/joomla/Manual/pull/582)
 - **Issue**: [joomla/joomla-cms #46824](https://github.com/joomla/joomla-cms/issues/46824)
 - **Joomla Manual**: [Building Extensions > Performance](https://manual.joomla.org/)
 
-## Ì∫Ä Quick Example
+## Quick Example
 
 ```php
 // 1. Create CacheService
@@ -48,7 +48,7 @@ $items = $cacheService->get(
 $cacheService->clean('com_mycomponent', 'group');
 ```
 
-## Ì≥ä Performance Impact
+## Performance Impact
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
@@ -56,13 +56,13 @@ $cacheService->clean('com_mycomponent', 'group');
 | Page load time | 1200ms | 600ms | **50% ‚Üì** |
 | Concurrent users | 100 | 300 | **3x ‚Üë** |
 
-## Ì¥ù Contributing
+## Contributing
 
 This documentation is based on real production implementation and has been tested in production environments. 
 
 Feel free to open issues or submit improvements!
 
-## Ì≥ù License
+##  License
 
 This documentation is provided as-is for the Joomla community.
 
